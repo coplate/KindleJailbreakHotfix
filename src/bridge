@@ -50,11 +50,11 @@ mount_root_rw()
 	# Check if we're running from main...
 	DEV="$(rdev | awk '{ print $1 }')"
 	# Don't do something stupid if rdev is missing for some reason...
-	if [ "${DEV}" != "/dev/mmcblk0p1" -a -n "${DEV}" ] ; then
+	if [ "${DEV}" != "/dev/mmcblk2p5" -a -n "${DEV}" ] ; then
 		ROOT="/tmp/root"
 		logmsg "I" "mount_root_rw" "" "Running from diags, mounting main rootfs on ${ROOT}"
 		mkdir -p "${ROOT}"
-		mount -o rw "/dev/mmcblk0p1" "${ROOT}"
+		mount -o rw "/dev/mmcblk2p5" "${ROOT}"
 	else
 		logmsg "I" "mount_root_rw" "" "Mounting rootfs rw"
 		mount_rw
