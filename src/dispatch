@@ -1,0 +1,37 @@
+#!/bin/sh
+#
+# Kindle Oasis Dispatch
+#
+# $Id: dispatch.sh 13356 2016-07-11 18:33:39Z NiLuJe $
+#
+##
+
+## Check our args...
+if [ "$#" -ne 1 ] ; then
+	eips 1 0 "No arg passed. Select from mrpi or runme"
+	return 0
+fi
+
+case "${1}" in
+	# Launch MRPI!
+	"mrpi" | "MRPI" | m* )
+		if [ -f "/mnt/us/extensions/MRInstaller/bin/mrinstaller.sh" ] ; then
+			exec /bin/sh "/mnt/us/extensions/MRInstaller/bin/mrinstaller.sh" launch_installer
+		else
+			eips 1 0 "MRPI is not installed.                  "
+		fi
+	;;
+	# Launch user script!
+	"custom" | "CUSTOM" | "runme" | "RUNME" | r* )
+		if [ -f "/mnt/us/RUNME.sh" ] ; then
+			exec /bin/sh "/mnt/us/RUNME.sh"
+		else
+			eips 1 0 "No user script found.                   "
+		fi
+	;;
+	* )
+		eips 1 0 "Wrong arg. Select from mrpi or runme    "
+	;;
+esac
+
+return 0

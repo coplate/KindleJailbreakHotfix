@@ -1,0 +1,9 @@
+128 2ef10c2928647504bac4ecd34b6ad97d libotautils5 101 libotautils5_ktool_file
+129 5781794c074ae5b0794e01529c1f8724 install-bridge.sh 57 install-bridge.sh_ktool_file
+128 2253b4e7d89a491cec9836d50c3e8b50 bridge 241 bridge_ktool_file
+128 13c1031a640d6c5e6248d81d4e437d8e json_simple-1.1.jar 453 json_simple-1.1.jar_ktool_file
+128 147f0cc5a13aea1ba071a7f558bb4b23 developer.keystore 634 developer.keystore_ktool_file
+128 60a5f828e645a434926abc3911e85c55 gandalf 243 gandalf_ktool_file
+128 299dda972a2902d896f542976f34ce05 bridge.conf 51 bridge.conf_ktool_file
+129 b40d47526555aa18a1069f28d913305c install-dispatch.sh 26 install-dispatch.sh_ktool_file
+128 59aeb33c66025180debd0d3f6c697830 dispatch 12 dispatch_ktool_file

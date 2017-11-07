@@ -1,0 +1,239 @@
+##
+#
+#  Logging/Progressbar handling for OTA update scripts
+#
+#  $Id: libotautils5 13342 2016-07-11 12:24:16Z NiLuJe $
+#
+#  kate: syntax bash;
+#
+##
+
+## Logging
+# Pull some helper functions for logging
+_FUNCTIONS=/etc/upstart/functions
+[ -f ${_FUNCTIONS} ] && source ${_FUNCTIONS}
+
+# Make sure HACKNAME is set (NOTE: This should be overriden in the update script)
+[ -z "${HACKNAME}" ] && HACKNAME="ota_script"
+
+# Adapt the K5 logging calls to the simpler legacy syntax
+logmsg()
+{
+	f_log "${1}" "${HACKNAME}" "${2}" "${3}" "${4}"
+	# Add our own echo, like on legacy devices (useful for MRPI logging, since f_log's one is sent to /dev/console)
+	if [ "${1}" != "D" ] ; then
+		echo "system: ${1} ${HACKNAME}:${2}:${3}:${4}"
+	fi
+}
+
+# We need to get the proper constants for our model...
+kmodel="$(cut -c3-4 /proc/usid)"
+case "${kmodel}" in
+	"13" | "54" | "2A" | "4F" | "52" | "53" )
+		# Voyage...
+		SCREEN_X_RES=1088
+		SCREEN_Y_RES=1448
+		EIPS_X_RES=16
+		EIPS_Y_RES=24
+	;;
+	"24" | "1B" | "1D" | "1F" | "1C" | "20" | "D4" | "5A" | "D5" | "D6" | "D7" | "D8" | "F2" | "17" | "60" | "F4" | "F9" | "62" | "61" | "5F" )
+		# PaperWhite...
+		SCREEN_X_RES=768
+		SCREEN_Y_RES=1024
+		EIPS_X_RES=16
+		EIPS_Y_RES=24
+	;;
+	"C6" | "DD" )
+		# KT2...
+		SCREEN_X_RES=608
+		SCREEN_Y_RES=800
+		EIPS_X_RES=16
+		EIPS_Y_RES=24
+	;;
+	"0F" | "11" | "10" | "12" )
+		# Touch
+		SCREEN_X_RES=600
+		SCREEN_Y_RES=800
+		EIPS_X_RES=12
+		EIPS_Y_RES=20
+	;;
+	* )
+		# Try the new device ID scheme...
+		kmodel="$(cut -c4-6 /proc/usid)"
+		case "${kmodel}" in
+			"0G1" | "0G2" | "0G4" | "0G5" | "0G6" | "0G7" | "0KB" | "0KC" | "0KD" | "0KE" | "0KF" | "0KG" )
+				# PW3... NOTE: Hopefully matches the KV...
+				SCREEN_X_RES=1088
+				SCREEN_Y_RES=1448
+				EIPS_X_RES=16
+				EIPS_Y_RES=24
+			;;
+			"0GC" | "0GD" | "0GR" | "0GS" | "0GT" | "0GU" )
+				# Oasis... NOTE: Hopefully matches the KV...
+				SCREEN_X_RES=1088
+				SCREEN_Y_RES=1448
+				EIPS_X_RES=16
+				EIPS_Y_RES=24
+			;;
+			"0DU" | "0K9" | "0KA" )
+				# KT3... NOTE: Hopefully matches the KT2...
+				SCREEN_X_RES=608
+				SCREEN_Y_RES=800
+				EIPS_X_RES=16
+				EIPS_Y_RES=24
+			;;
+			* )
+				# Fallback... We shouldn't ever hit that.
+				SCREEN_X_RES=600
+				SCREEN_Y_RES=800
+				EIPS_X_RES=12
+				EIPS_Y_RES=20
+			;;
+		esac
+	;;
+esac
+# And now we can do the maths ;)
+EIPS_MAXCHARS="$((${SCREEN_X_RES} / ${EIPS_X_RES}))"
+EIPS_MAXLINES="$((${SCREEN_Y_RES} / ${EIPS_Y_RES}))"
+
+# Adapted from libkh[5]
+eips_print_bottom_centered()
+{
+	# We need at least two args
+	if [ $# -lt 2 ] ; then
+		echo "not enough arguments passed to eips_print_bottom_centered ($# while we need at least 2)"
+		return
+	fi
+
+	kh_eips_string="${1}"
+	kh_eips_y_shift_up="${2}"
+
+	# Get the real string length now
+	kh_eips_strlen="${#kh_eips_string}"
+
+	# Add the right amount of left & right padding, since we're centered, and eips doesn't trigger a full refresh,
+	# so we'll have to padd our string with blank spaces to make sure two consecutive messages don't run into each other
+	kh_padlen="$(((${EIPS_MAXCHARS} - ${kh_eips_strlen}) / 2))"
+
+	# Left padding...
+	while [ ${#kh_eips_string} -lt $((${kh_eips_strlen} + ${kh_padlen})) ] ; do
+		kh_eips_string=" ${kh_eips_string}"
+	done
+
+	# Right padding (crop to the edge of the screen)
+	while [ ${#kh_eips_string} -lt ${EIPS_MAXCHARS} ] ; do
+		kh_eips_string="${kh_eips_string} "
+	done
+
+	# Sleep a tiny bit to workaround the logic in the 'new' (K4+) eInk controllers that tries to bundle updates
+	if [ "${EIPS_SLEEP}" == "true" ] ; then
+		usleep 150000	# 150ms
+	fi
+
+	# And finally, show our formatted message centered on the bottom of the screen (NOTE: Redirect to /dev/null to kill unavailable character & pixel not in range warning messages)
+	eips 0 $((${EIPS_MAXLINES} - 2 - ${kh_eips_y_shift_up})) "${kh_eips_string}" >/dev/null
+}
+
+
+## Progressbar
+# Some constants...
+_BLANKET="com.lab126.blanket"
+_OTAMODULE="${_BLANKET}.ota"
+
+# Check if blanket is running
+if pkill -0 blanket ; then
+	BLANKET_IS_UP="true"
+else
+	BLANKET_IS_UP="false"
+fi
+
+# Send progress to blanket, or print it manually otherwise
+otautils_update_progress_indicator()
+{
+	local cur_percentage="${1}"
+
+	if [ "${BLANKET_IS_UP}" == "true" ] ; then
+		lipc-send-event ${_OTAMODULE} otaSplashProgress -i ${cur_percentage}
+	else
+		eips_print_bottom_centered "Progress: ${cur_percentage}/100" 2
+	fi
+}
+
+# Check if arg is an int
+is_integer()
+{
+	# Cheap trick ;)
+	[ "${1}" -eq "${1}" ] 2>/dev/null
+	return $?
+}
+
+# The amount of steps needed to fill the progress bar
+# I'm lazy, so just count the amount of calls in the script itself ;)
+# NOTE: Yup, $0 still points to the original script that sourced us :).
+[ -z ${STEPCOUNT} ] && STEPCOUNT="$(grep -c '^[[:blank:]]*otautils_update_progressbar$' ${0} 2>/dev/null)"
+# Make sure it's sane...
+is_integer "${STEPCOUNT}" || STEPCOUNT=1
+# NOTE: If you need to for some strange reason, this can be overriden in the update script
+
+# In case we need to catch failure early...
+otautils_die()
+{
+	local error_string="${1}"
+
+	if [ "${BLANKET_IS_UP}" == "true" ] ; then
+		lipc-send-event ${_OTAMODULE} otaSplashError -s "${error_string}"
+	else
+		eips_print_bottom_centered "Error: ${error_string}" 1
+	fi
+	if [ $? -eq 0 ] ; then
+		logmsg "D" "guierror" "" "display error screen: ${error_string}"
+	else
+		logmsg "W" "guierror" "status=fail" "display error screen: ${error_string}"
+	fi
+
+	# And it is called die, after all ;)
+	sleep 5
+	exit 1
+}
+
+# Fill up our progress bar, one step at a time
+# Keep track of what we're doing...
+_CUR_STEP=0
+_CUR_PERCENTAGE=0
+otautils_update_progressbar()
+{
+	# One more step...
+	_CUR_STEP=$((_CUR_STEP + 1))
+	# Bounds checking...
+	if [ ${_CUR_STEP} -lt 0 ] ; then
+		_CUR_STEP=0
+	elif [ ${_CUR_STEP} -gt ${STEPCOUNT} ] ; then
+		_CUR_STEP=${STEPCOUNT}
+	fi
+
+	# Make that a percentage
+	local bar_percentage=$(( (${_CUR_STEP} * 100) / ${STEPCOUNT} ))
+	# We can only *fill* the bar...
+	if [ ${_CUR_PERCENTAGE} -lt ${bar_percentage} ] ; then
+		_CUR_PERCENTAGE=${bar_percentage}
+	fi
+
+	# Make sure that percentage is sane...
+	is_integer "${_CUR_PERCENTAGE}" || _CUR_PERCENTAGE=0
+	# Bounds checking...
+	if [ ${_CUR_PERCENTAGE} -gt 100 ] ; then
+		_CUR_PERCENTAGE=100
+	elif [ ${_CUR_PERCENTAGE} -lt 0 ] ; then
+		_CUR_PERCENTAGE=0
+	fi
+
+	# Finally, refresh the bar
+	otautils_update_progress_indicator "${_CUR_PERCENTAGE}"
+	if [ $? -eq 0 ] ; then
+		logmsg "D" "guiprogress" "progress=${_CUR_PERCENTAGE}" "update progress indicator"
+	else
+		logmsg "W" "guiprogress" "progress=${_CUR_PERCENTAGE},status=fail" "update progress indicator"
+	fi
+}
+
+# That's all, folks ;)
