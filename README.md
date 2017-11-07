@@ -5,7 +5,7 @@ This currently only supports the KOA2 partition scheme.  Please note the partiti
 
 To build for KOA2
 
-There is probably an easier way than this.
+There is probably an easier way than this, but I do this to sign all the individual files.
 
 1. Export all code to a directory, say: koa2_hf
 2. KT_WITH_UNKNOWN_DEVCODES=1 kindletool create ota2 -d touch -d 295 -d 296 -d 297 -d 298 -d 2E1 -d 2E2 -d 2E6 -d 2E7 -d 2E8 -d 341 -d 342 -d 343 -d 344 -d 347 -d 34A -O -s 0 -t 18446744073709551615 koa2_hf > koa2_hf.bin
